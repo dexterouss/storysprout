@@ -50,7 +50,7 @@ export const countParagraphs = text => String(text || '').split(/\n\s*\n/).filte
 export const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const uid = () => `w${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`;
 export function newProfile(name='Little writer') {
-  return {id:uid(),name:name.trim().slice(0,30)||'Little writer',grade:1,drafts:{},completed:{},settings:{targets:{},unlockAll:false,fontSize:22}};
+  return {id:uid(),name:name.trim().slice(0,30)||'Little writer',grade:1,drafts:{},completed:{},settings:{targets:{},unlockAll:false,fontSize:22},game:newGame()};
 }
 export function newState() { const p=newProfile();return {version:1,activeProfile:p.id,profiles:[p],sound:false}; }
 export function emptyDraft() { return {title:'',text:'',plan:['','',''],checks:[false,false,false],updatedAt:null}; }
@@ -106,7 +106,87 @@ export function normaliseState(raw) {
       const t=p.settings?.targets?.[m.id];
       if(Number.isInteger(t)&&t>=5&&t<=1000)n.settings.targets[m.id]=t;
     }
+    n.game=normaliseGame(n,p.game);
     return n;
   });
   return {version:1,profiles,activeProfile:profiles.some(p=>p.id===raw.activeProfile)?raw.activeProfile:profiles[0].id,sound:raw.sound===true};
+}
+
+export const WORLDS = {
+  1:{name:'Sunshine Meadow',short:'Meadow',icon:'sun',colour:'#f3a431',pale:'#fff3d0',sky:'#fff7df',story:'Help Sprout bring the story garden to life.',skill:'Little sentences. Big discoveries.'},
+  2:{name:'Whispering Woods',short:'Woods',icon:'tree',colour:'#229d80',pale:'#d9f4dd',sky:'#eaf9ef',story:'Follow the woodland trail and uncover five hidden stories.',skill:'Connect your ideas and add details.'},
+  3:{name:'Coral Cove',short:'Cove',icon:'bottle',colour:'#159db0',pale:'#d6f6f4',sky:'#e9faff',story:'Sail between story islands and fill your explorer’s journal.',skill:'Build paragraphs and explain your ideas.'},
+  4:{name:'Cloud Castle',short:'Castle',icon:'flag',colour:'#5078e4',pale:'#e1eaff',sky:'#eef2ff',story:'Climb to the castle with descriptions, opinions and adventure.',skill:'Create atmosphere and support a point.'},
+  5:{name:'Crystal Caverns',short:'Caverns',icon:'spark',colour:'#9657d1',pale:'#efdefb',sky:'#f8efff',story:'Find the story crystals hidden inside each writing quest.',skill:'Develop your voice and persuade a reader.'},
+  6:{name:'Starlight Summit',short:'Summit',icon:'compass',colour:'#d35491',pale:'#fbddec',sky:'#fff0f7',story:'Reach the summit with powerful ideas and stories worth sharing.',skill:'Explore viewpoints, tension and consequences.'}
+};
+export const COMPANIONS = [
+  {id:'sprout',name:'Sprout',kind:'The idea explorer',cost:0,colour:'#76cb86',accent:'#2e8d67'},
+  {id:'owl',name:'Orbit',kind:'The wise night owl',cost:30,colour:'#b6a0f7',accent:'#7359bb'},
+  {id:'fox',name:'Ember',kind:'The curious story fox',cost:70,colour:'#ffb36d',accent:'#df6b43'},
+  {id:'dragon',name:'Nova',kind:'The imagination dragon',cost:150,colour:'#7ddbe1',accent:'#369caf'}
+];
+const WARMUP_SENTENCES = {
+  1:['My little cat can jump.','The sweet apple is red.','My kind friend helps me.','We played in the park.','The kite flew over a tree.'],
+  2:['My favourite place is beside the river.','First we watched the rain from inside.','My clever invention helps us carry books.','I enjoy this game because we play together.','Suddenly a tiny frog jumped from my bag.'],
+  3:['Visitors can hear cheerful music in our community.','At first I found the new skill difficult.','Next place the plant where it gets enough light.','Our school needs more shade because the playground gets hot.','The mysterious footsteps led us towards an old wooden gate.'],
+  4:['Colourful stalls filled the market as vendors called to passing shoppers.','Although the task was difficult, I decided to try again.','Before you begin the hobby, prepare your equipment and find a safe space.','More trees would provide shade and create habitats for birds.','Beyond the creaking bridge, a narrow path disappeared into the forest.'],
+  5:['At dawn the quiet river shimmered beneath a pale golden sky.','Although we disagreed at first, each person contributed to the solution.','A new pupil may feel more confident when someone explains the school routine.','Additional reading time could help pupils discover books they enjoy.','Inside the weathered bottle, a folded message revealed the first clue.'],
+  6:['To one visitor the building seemed welcoming, while another found it unsettling.','Only after hearing her explanation did I begin to reconsider my earlier opinion.','If neighbours work together, a small initiative can create a lasting community benefit.','Although pupils should help shape school rules, their proposals must consider everyone.','Faced with two difficult choices, she realised that doing nothing also had consequences.']
+};
+export function newGame(){return {warmups:{},owned:['sprout'],companion:'sprout'};}
+export function warmupFor(mission){
+  mission=missionById(mission?.id);
+  if(!mission)return null;
+  const words=WARMUP_SENTENCES[mission.grade][mission.level-1].split(' ');
+  // Keep stable tile identities, even when the model sentence repeats a word.
+  let seed=mission.grade*37+mission.level*101;
+  const tiles=words.map((word,index)=>({word,index}));
+  for(let i=tiles.length-1;i>0;i--){seed=(seed*1664525+1013904223)>>>0;const j=seed%(i+1);[tiles[i],tiles[j]]=[tiles[j],tiles[i]];}
+  if(tiles.every((tile,i)=>tile.index===i))tiles.reverse();
+  return {sentence:words.join(' '),words,tiles,first:words[0]};
+}
+export function warmupMatches(mission,answer){
+  const puzzle=warmupFor(mission);
+  return !!puzzle&&Array.isArray(answer)&&answer.length===puzzle.words.length&&answer.every((word,i)=>word===puzzle.words[i]);
+}
+export function gameStats(profile){
+  const s=stats(profile),g=profile.game||newGame();
+  const warmups=MISSIONS.filter(m=>g.warmups?.[m.id]===true).length;
+  const owned=COMPANIONS.filter(c=>(g.owned||[]).includes(c.id));
+  const earned=s.stars*10+warmups*5,spent=owned.reduce((sum,c)=>sum+c.cost,0),xp=s.xp+warmups*15;
+  const rank=Math.floor(xp/150)+1;
+  return {...s,warmups,gems:Math.max(0,earned-spent),earned,xp,rank,rankProgress:xp%150,rankName:rank<3?'Story scout':rank<6?'Word ranger':rank<10?'Quest captain':'Story legend'};
+}
+export function claimWarmup(profile,mission,answer){
+  mission=missionById(mission?.id);
+  if(!mission||!isUnlocked(profile,mission))return {ok:false,reason:'locked'};
+  if(!warmupMatches(mission,answer))return {ok:false,reason:'order'};
+  profile.game ||= newGame();
+  const firstTime=profile.game.warmups[mission.id]!==true;
+  profile.game.warmups[mission.id]=true;
+  return {ok:true,firstTime,gems:firstTime?5:0};
+}
+export function chooseCompanion(profile,id){
+  const companion=COMPANIONS.find(c=>c.id===id);
+  if(!companion)return {ok:false,reason:'unknown'};
+  profile.game ||= newGame();
+  if(!profile.game.owned.includes(id)){
+    if(gameStats(profile).gems<companion.cost)return {ok:false,reason:'gems'};
+    profile.game.owned.push(id);
+  }
+  profile.game.companion=id;
+  return {ok:true};
+}
+function normaliseGame(profile,raw){
+  const game=newGame();
+  for(const mission of MISSIONS)if(raw?.warmups?.[mission.id]===true)game.warmups[mission.id]=true;
+  const budget=stats(profile).stars*10+Object.keys(game.warmups).length*5;
+  let spent=0;
+  for(const id of Array.isArray(raw?.owned)?raw.owned.slice(0,20):[]){
+    const c=COMPANIONS.find(c=>c.id===id);
+    if(c&&!game.owned.includes(id)&&spent+c.cost<=budget){game.owned.push(id);spent+=c.cost;}
+  }
+  game.companion=game.owned.includes(raw?.companion)?raw.companion:'sprout';
+  return game;
 }

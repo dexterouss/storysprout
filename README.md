@@ -1,6 +1,16 @@
-# StorySprout
+# StorySprout Quest
 
 A buildless composition-writing game for grades 1–6. Serve the repository root as the static root. The application has no third-party dependencies, external fonts, analytics, paid APIs or AI marking service.
+
+## Adventure and rewards
+
+Six illustrated worlds provide a five-quest map for each grade. Original vector companions, gentle animation, optional reward sounds and a word-power meter make progression visible. The writing studio keeps the existing planning, composition and self-review tools. Instructions and word tiles use larger text for Grades 1–2. Layouts adapt to phone widths, and animation respects reduced-motion settings.
+
+Each mission includes an optional sentence-scramble warm-up: tap word tiles to rebuild a model sentence, use free clues, retry, or move straight to writing. Higher grades use longer sentences and more complex structures. The puzzle is a reconstruction activity, not a grammar assessment; the pupil’s own composition may use different wording and ideas. Warm-up words do not count towards the composition target. Completing a warm-up does not unlock the next writing level.
+
+A newly earned star gives 10 story gems; a first successful warm-up gives 5 gems and 15 XP. Replaying completed activities cannot repeatedly earn those rewards. Stars give 25 XP each, and 150 XP advances the explorer rank. Gems unlock Orbit the owl (30), Ember the fox (70) and Nova the dragon (150); Sprout is available from the beginning. Owned companions can be selected freely. All rewards are virtual and earned in the app.
+
+Older saved writing and version-1 JSON backups remain compatible. Existing stars automatically contribute to gem earnings. The same storage key and profile IDs preserve progress on the existing GitHub Pages address. New backups also preserve warm-up completion, companion ownership and the equipped companion. Clearing a writer’s progress resets these game rewards with their writing.
 
 ## Learning experience
 
@@ -27,7 +37,7 @@ The interface supports small screens, labelled inputs, keyboard navigation, focu
 
 ## Verification
 
-Run `node --test tests/*.test.mjs` for curriculum, word-count, progression, reward, snapshot, profile, backup, storage-failure and controller checks. Controller tests use an in-memory document, not a real browser. Run `node --check app.mjs` and `node --check core.mjs` for syntax checks. Browser/layout verification requires an available supported browser-control capability.
+Run `node --test tests/*.test.mjs` for curriculum, word-count, progression, reward, snapshot, profile, backup, storage-failure and controller checks. Controller tests use an in-memory document, not a real browser. Run `node --check app.mjs`, `node --check core.mjs` and `node --check game-art.mjs` for syntax checks. Browser/layout verification requires an available supported browser-control capability.
 
 ## GitHub Pages
 

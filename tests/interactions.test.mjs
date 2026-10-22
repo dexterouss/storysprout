@@ -4,14 +4,15 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import * as core from '../core.mjs';
+import * as art from '../game-art.mjs';
 
 function setup(seed=null,failStorage=false){
   const listeners={},nodes=Object.fromEntries(['app','modal-root','toast','print-area'].map(id=>[id,{innerHTML:'',textContent:'',inert:false,classList:{add(){},remove(){}},querySelector(){return null;}}]));
   const memory=new Map(seed?[[core.STORAGE_KEY,JSON.stringify(seed)]]:[]),timers=new Map();let timerId=0;
   const document={activeElement:null,visibilityState:'visible',getElementById:id=>nodes[id]||null,querySelector:()=>null,querySelectorAll:()=>[],addEventListener:(name,fn)=>listeners[name]=fn};
   const window={addEventListener(){},scrollTo(){},print(){}};
-  const context=vm.createContext({...core,esc:core.escapeHTML,document,window,structuredClone,console,Blob,URL,queueMicrotask:fn=>fn(),setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>{if(failStorage)throw new Error('quota');memory.set(k,v);}},FormData:class{constructor(form){this.values=form.values;}get(k){return this.values[k]??null;}}});
-  const source=readFileSync(new URL('../app.mjs',import.meta.url),'utf8').replace(/^import [^\n]+\n/,'');
+  const context=vm.createContext({...core,...art,esc:core.escapeHTML,document,window,structuredClone,console,Blob,URL,queueMicrotask:fn=>fn(),setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>{if(failStorage)throw new Error('quota');memory.set(k,v);}},FormData:class{constructor(form){this.values=form.values;}get(k){return this.values[k]??null;}}});
+  const source=readFileSync(new URL('../app.mjs',import.meta.url),'utf8').replace(/^import [^\n]+\n/gm,'');
   vm.runInContext(source+'\n globalThis.__test={getState:()=>state,getView:()=>view,getStep:()=>step,saveState};',context);
   const click=async(action,data={})=>{const el={dataset:{action,...data},disabled:false};await listeners.click({target:{closest:()=>el}});};
   const input=(id,value,dataset={})=>listeners.input({target:{id,value,dataset}});
@@ -20,7 +21,7 @@ function setup(seed=null,failStorage=false){
   return {nodes,memory,context,listeners,click,input,change,submit,state:()=>context.__test.getState()};
 }
 test('the actual controller renders six grades and switches to grade 6 missions',async()=>{
-  const h=setup();assert.match(h.nodes.app.innerHTML,/Small words/);assert.equal((h.nodes.app.innerHTML.match(/data-action="grade"/g)||[]).length,6);assert.equal((h.nodes.app.innerHTML.match(/class="mission-card /g)||[]).length,5);
+  const h=setup();assert.match(h.nodes.app.innerHTML,/Your next adventure/);assert.equal((h.nodes.app.innerHTML.match(/data-action="grade"/g)||[]).length,6);assert.equal((h.nodes.app.innerHTML.match(/class="mission-card /g)||[]).length,5);
   await h.click('grade',{grade:'6'});assert.equal(h.state().profiles[0].grade,6);assert.match(h.nodes.app.innerHTML,/One place, two viewpoints/);assert.match(h.nodes.app.innerHTML,/<strong>150<\/strong> word target/);assert.equal(JSON.parse(h.memory.get(core.STORAGE_KEY)).profiles[0].grade,6);
 });
 test('writing, reviewing and finishing persists a story and unlocks the next mission',async()=>{
@@ -48,4 +49,27 @@ test('backup restoration waits for confirmation and sanitises displayed writer n
 });
 test('storage failure preserves in-memory writing and reports the problem',async()=>{
   const h=setup(null,true);await h.click('open-mission',{id:'g1l1'});h.input('story-text','My story is still here.');h.context.__test.saveState();await h.click('home');assert.match(h.nodes.app.innerHTML,/cannot save your writing/);assert.equal(h.state().profiles[0].drafts.g1l1.text,'My story is still here.');
+});
+
+test('the sentence game handles clues, retries and the transition to a real composition',async()=>{
+  const h=setup();await h.click('open-warmup',{id:'g1l1'});
+  assert.match(h.nodes.app.innerHTML,/Sentence scramble/);
+  await h.click('warmup-hint');assert.match(h.nodes.app.innerHTML,/word 1/);
+  const puzzle=core.warmupFor(core.missionById('g1l1'));
+  await h.click('warmup-pick',{index:'0'});await h.click('warmup-check');
+  assert.match(h.nodes.app.innerHTML,/Almost/);assert.equal(core.gameStats(h.state().profiles[0]).gems,0);
+  await h.click('warmup-reset');
+  for(let original=0;original<puzzle.words.length;original++)await h.click('warmup-pick',{index:String(puzzle.tiles.findIndex(tile=>tile.index===original))});
+  await h.click('warmup-check');assert.match(h.nodes.app.innerHTML,/Word power unlocked/);
+  assert.equal(core.gameStats(h.state().profiles[0]).gems,5);
+  await h.click('open-mission',{id:'g1l1'});assert.match(h.nodes.app.innerHTML,/Let your ideas take root/);
+  assert.equal(h.state().profiles[0].drafts.g1l1.text,'');
+});
+
+test('clearing a writer resets game rewards and companions along with writing',async()=>{
+  const seed=core.newState(),p=seed.profiles[0],mission=core.missionById('g1l1');
+  core.claimWarmup(p,mission,core.warmupFor(mission).words);
+  const h=setup(seed);await h.click('confirm-reset');
+  assert.equal(core.gameStats(h.state().profiles[0]).gems,0);
+  assert.deepEqual([...h.state().profiles[0].game.owned],['sprout']);
 });
